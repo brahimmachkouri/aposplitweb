@@ -1,0 +1,19 @@
+{
+    "name": "aposplitweb/app",
+    "description": "Apogée PDF Splitter pour étudiants",
+    "type": "project",
+    "require": {
+        "php": ">=8.0",
+        "smalot/pdfparser": "^2.0",
+        "setasign/fpdi": "^2.3",
+        "setasign/fpdf": "1.8.6"
+    },
+    "autoload": {
+        "psr-4": {
+            "ApoSplitWeb\\": "src/"
+        }
+    },
+    "scripts": {
+        "test": "php test.php"
+    }
+}
