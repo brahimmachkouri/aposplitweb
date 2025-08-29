@@ -1,15 +1,6 @@
 <?php
 // BM 2025
 
-// Exemple d'utilisation
-/*
-try {
-    $splitter = new StudentPdfSplitter();
-    StudentPdfSplitter::autoSplit('/path/to/your/pdf/file.pdf', '/path/to/output/directory');
-} catch (Exception $e) {
-    echo "Erreur: " . $e->getMessage() . "\n";
-}
-*/
 require_once('vendor/autoload.php');
 
 /**
