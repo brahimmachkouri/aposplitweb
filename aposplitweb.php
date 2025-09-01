@@ -21,15 +21,30 @@ interface IPdfHandler
  */
 class PdfHandler implements IPdfHandler
 {
+    private ?\Smalot\PdfParser\Document $cachedPdf = null;
+    private ?string $cachedPdfPath = null;
+
+    /**
+     * Parse un PDF et retourne les pages (avec mise en cache)
+     */
+    private function getParsedPages(string $pdfPath): array
+    {
+        // Utilise le cache si c'est le même fichier
+        if ($this->cachedPdf === null || $this->cachedPdfPath !== $pdfPath) {
+            $parser = new \Smalot\PdfParser\Parser();
+            $this->cachedPdf = $parser->parseFile($pdfPath);
+            $this->cachedPdfPath = $pdfPath;
+        }
+        
+        return $this->cachedPdf->getPages();
+    }
+
     /**
      * Retourne le nombre de pages d'un PDF
      */
     public function getPageCount(string $pdfPath): int
     {
-        $parser = new \Smalot\PdfParser\Parser();
-        $pdf = $parser->parseFile($pdfPath);
-        $pages = $pdf->getPages();
-        return count($pages);
+        return count($this->getParsedPages($pdfPath));
     }
 
     /**
@@ -37,9 +52,7 @@ class PdfHandler implements IPdfHandler
      */
     public function getPageText(string $pdfPath, int $pageIndex): string
     {
-        $parser = new \Smalot\PdfParser\Parser();
-        $pdf = $parser->parseFile($pdfPath);
-        $pages = $pdf->getPages();
+        $pages = $this->getParsedPages($pdfPath);
         
         if (isset($pages[$pageIndex])) {
             return $pages[$pageIndex]->getText();
@@ -80,11 +93,13 @@ class PdfHandler implements IPdfHandler
     }
 
     /**
-     * Ferme un document PDF (libère les ressources)
+     *  Ferme un document PDF (libère les ressources) et libère le cache lors de la fermeture
      */
     public function closeDocument($document): void
     {
-        // PHP gère automatiquement la libération des ressources
+        // Nettoie aussi le cache
+        $this->cachedPdf = null;
+        $this->cachedPdfPath = null;
         unset($document);
     }
 }
@@ -146,7 +161,7 @@ class StudentPdfSplitter
         $studentDocuments = self::extractStudentDocuments($pdfPath, self::$pdfHandler);
         self::saveStudentDocuments($studentDocuments, $sanitizedBaseName, $studentOutputDir);
 
-        echo "Traitement terminé : " . count($studentDocuments) . " fichiers créés dans $studentOutputDir\n";
+        error_log("Traitement terminé : " . count($studentDocuments) . " fichiers créés dans $studentOutputDir\n");
     }
 
     /**
@@ -229,9 +244,9 @@ class StudentPdfSplitter
 
         try {
             self::$pdfHandler->saveDocument($studentPdf, $fullPath);
-            echo "✓ Fichier sauvegardé: $fileName\n";
+            error_log("✓ Fichier sauvegardé: $fileName\n");
         } catch (Exception $ex) {
-            echo "Erreur lors de la sauvegarde du fichier $fullPath: " . $ex->getMessage() . "\n";
+            error_log("Erreur lors de la sauvegarde du fichier $fullPath: " . $ex->getMessage() . "\n");
         } finally {
             self::$pdfHandler->closeDocument($studentPdf);
         }
@@ -256,10 +271,6 @@ class StudentPdfSplitter
                 if ($markerPos !== false) {
                     // Le nom est sur la ligne suivante
                     $studentName = trim($lines[$i+1]);
-
-                    if (empty($studentName)) {
-                        $studentName = null;
-                    }
                 }
             }
 
@@ -279,28 +290,39 @@ class StudentPdfSplitter
     }
 
     /**
-     * Nettoie une chaîne pour qu'elle soit utilisable comme nom de fichier
+     * Nettoie une chaîne selon le contexte
      */
+    private static function sanitizeString(string $input, string $context = 'filename'): string
+    {
+        if (empty(trim($input))) {
+            return $context === 'filename' ? 'chaine_vide' : 'x';
+        }
+
+        $normalized = self::removeAccents($input);
+        
+        if ($context === 'filename') {
+            $cleaned = preg_replace('/[^a-z0-9]/', '_', strtolower($normalized));
+            $cleaned = preg_replace('/_+/', '_', trim($cleaned, '_'));
+            return empty($cleaned) ? 'nettoyage_vide' : $cleaned;
+        }
+        
+        // Pour 'clean' context
+        $cleaned = preg_replace('/[^\w\-]/', '_', $normalized);
+        $cleaned = preg_replace('/_+/', '_', trim($cleaned, '_'));
+        return empty($cleaned) ? 'x' : $cleaned;
+    }
+
     public static function sanitizeForFilename(string $input): string
     {
-        if (empty($input)) {
-            return 'chaine_vide';
-        }
+        return self::sanitizeString($input, 'filename');
+    }
 
-        // Normalisation des caractères
-        $normalized = self::removeAccents($input);
-        $lowerCase = strtolower($normalized);
-        
-        // Remplacement des caractères non alphanumériques
-        $replaced = preg_replace('/[^a-z0-9]/', '_', $lowerCase);
-        $cleaned = preg_replace('/_+/', '_', $replaced);
-        $cleaned = trim($cleaned, '_');
-
-        if (empty($cleaned)) {
-            return 'nettoyage_vide';
-        }
-
-        return $cleaned;
+    /**
+     * Nettoie une chaîne pour les noms de fichiers
+     */
+    private static function clean(string $s): string
+    {
+        return self::sanitizeString($s, 'clean');
     }
 
     /**
@@ -326,6 +348,14 @@ class StudentPdfSplitter
     private static function isAttestationPage(string $pageText): bool
     {
         return preg_match(self::ATTESTATION_REGEX, self::normalize($pageText));
+    }
+
+    /**
+     * Normalise une chaîne
+     */
+    private static function normalize(string $s): string
+    {
+        return strtolower(self::removeAccents($s));
     }
 
     /**
@@ -357,35 +387,13 @@ class StudentPdfSplitter
         if (empty($formation)) $formation = 'nan';
         if (empty($ine)) $ine = 'nan';
 
-        echo "Résultat final: $name, $formation, $ine\n";
+        error_log("Résultat final: $name, $formation, $ine\n");
 
         return [
             self::normalize($formation),
             self::normalize($name),
             self::normalize($ine)
         ];
-    }
-
-    /**
-     * Normalise une chaîne
-     */
-    private static function normalize(string $s): string
-    {
-        return strtolower(self::removeAccents($s));
-    }
-
-    /**
-     * Nettoie une chaîne pour les noms de fichiers
-     */
-    private static function clean(string $s): string
-    {
-        if (empty(trim($s))) return 'x';
-        
-        // Supprime les caractères invalides pour les noms de fichiers
-        $s = preg_replace('/[^\w\-]/', '_', $s);
-        $s = preg_replace('/_+/', '_', trim($s, '_'));
-        
-        return empty($s) ? 'x' : $s;
     }
 
     /**
@@ -419,7 +427,7 @@ class StudentPdfSplitter
             
             // Vérifie que la première page est bien une édition d'attestations
             if (!self::isAttestationPage($firstPageText)) {
-                echo "❓ Le document ne semble pas être « Édition d'attestations de réussite ».\n";
+                error_log("❓ Le document ne semble pas être « Édition d'attestations de réussite ».\n");
                 return;
             }
 
@@ -436,13 +444,13 @@ class StudentPdfSplitter
                 self::$pdfHandler->saveDocument($singleDoc, $fullPath);
                 self::$pdfHandler->closeDocument($singleDoc);
 
-                echo "✓ Page " . ($i + 1) . " → $fileName\n";
+                error_log("✓ Page " . ($i + 1) . " → $fileName\n");
                 $saved++;
             }
 
-            echo $saved > 0 
+            error_log($saved > 0 
                 ? "Terminé : $saved attestation(s) enregistrée(s) dans « $outDir ».\n"
-                : "Aucune page d'attestation détectée.\n";
+                : "Aucune page d'attestation détectée.\n");
         } else {
             // Il s'agit d'un relevé de notes
             self::splitByStudent($pdfPath, $outputBaseDir);
