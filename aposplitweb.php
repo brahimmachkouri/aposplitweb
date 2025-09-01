@@ -22,6 +22,7 @@ interface IPdfHandler
  */
 class PdfHandler implements IPdfHandler
 {
+    // Système de cache pour éviter de parser plusieurs fois le même PDF
     private ?\Smalot\PdfParser\Document $cachedPdf = null;
     private ?string $cachedPdfPath = null;
 
