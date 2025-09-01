@@ -294,22 +294,18 @@ class StudentPdfSplitter
      */
     private static function sanitizeString(string $input, string $context = 'filename'): string
     {
-        if (empty(trim($input))) {
-            return $context === 'filename' ? 'chaine_vide' : 'x';
-        }
-
-        $normalized = self::removeAccents($input);
-        
-        if ($context === 'filename') {
-            $cleaned = preg_replace('/[^a-z0-9]/', '_', strtolower($normalized));
+        $cleaned = '';
+        if (!empty(trim($input))) {
+            $normalized = self::removeAccents($input);
+            if ($context === 'filename') {
+                $cleaned = preg_replace('/[^a-z0-9]/', '_', strtolower($normalized));
+            }
+            else {// Pour 'clean' context
+                $cleaned = preg_replace('/[^\w\-]/', '_', $normalized);
+            }
             $cleaned = preg_replace('/_+/', '_', trim($cleaned, '_'));
-            return empty($cleaned) ? 'nettoyage_vide' : $cleaned;
         }
-        
-        // Pour 'clean' context
-        $cleaned = preg_replace('/[^\w\-]/', '_', $normalized);
-        $cleaned = preg_replace('/_+/', '_', trim($cleaned, '_'));
-        return empty($cleaned) ? 'x' : $cleaned;
+        return empty($cleaned) ? 'chaine_vide' : $cleaned;
     }
 
     public static function sanitizeForFilename(string $input): string
