@@ -1,5 +1,6 @@
 ![PHP](https://img.shields.io/badge/PHP-8.3-777bb4?logo=php&logoColor=white)
 ![Composer](https://img.shields.io/badge/Composer-2.x-885630?logo=composer&logoColor=white)
+![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 
 
 # aposplitweb
