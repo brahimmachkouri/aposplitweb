@@ -1,5 +1,5 @@
 <?php
-// BM 2025
+// (c) Brahim MACHKOURI 2025
 // Script pour diviser un PDF de relevés de notes ou attestations en un fichier par étudiant
 // version 1.3
 
