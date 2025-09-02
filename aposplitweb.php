@@ -115,7 +115,7 @@ class StudentPageInfo
 }
 
 /**
- * Divise un PDF de relevés de notes en un fichier par étudiant
+ * Divise un PDF d'Apogée en un fichier par étudiant
  */
 class StudentPdfSplitter
 {
