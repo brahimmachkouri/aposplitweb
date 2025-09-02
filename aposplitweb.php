@@ -322,7 +322,7 @@ class StudentPdfSplitter
     /**
      * Nettoie une chaîne pour l'utiliser comme nom de fichier
      */
-    public static function sanitizeForFilename(string $input): string
+    private static function sanitizeForFilename(string $input): string
     {
         if (empty(trim($input))) return 'chaine_vide';
         
