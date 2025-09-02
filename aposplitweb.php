@@ -1,11 +1,12 @@
 <?php
 // BM 2025
-// v1.1 20250902
+// Script pour diviser un PDF de relevés de notes ou attestations en un fichier par étudiant
+// version 1.3
 
 require_once('vendor/autoload.php');
 
 /**
- * Interface pour la gestion des PDF, permettant de séparer les responsabilités.
+ * Interface pour la gestion des PDF
  */
 interface IPdfHandler
 {
@@ -30,13 +31,12 @@ class PdfHandler implements IPdfHandler
      */
     private function getParsedPages(string $pdfPath): array
     {
-        // Utilise le cache si c'est le même fichier
+         // Utilise le cache si c'est le même fichier
         if ($this->cachedPdf === null || $this->cachedPdfPath !== $pdfPath) {
             $parser = new \Smalot\PdfParser\Parser();
             $this->cachedPdf = $parser->parseFile($pdfPath);
             $this->cachedPdfPath = $pdfPath;
         }
-        
         return $this->cachedPdf->getPages();
     }
 
@@ -54,16 +54,11 @@ class PdfHandler implements IPdfHandler
     public function getPageText(string $pdfPath, int $pageIndex): string
     {
         $pages = $this->getParsedPages($pdfPath);
-        
-        if (isset($pages[$pageIndex])) {
-            return $pages[$pageIndex]->getText();
-        }
-        
-        return '';
+        return isset($pages[$pageIndex]) ? $pages[$pageIndex]->getText() : '';
     }
 
     /**
-     * Crée un nouveau document PDF
+     * Création d'un nouveau document PDF
      */
     public function createDocument()
     {
@@ -71,7 +66,7 @@ class PdfHandler implements IPdfHandler
     }
 
     /**
-     * Ajoute une page d'un PDF source à un document PDF existant
+     * Ajout d'une page à un document PDF
      */
     public function addPageToDocument($document, string $pdfPath, int $pageIndex): void
     {
@@ -86,7 +81,7 @@ class PdfHandler implements IPdfHandler
     }
 
     /**
-     * Sauvegarde un document PDF
+     * Enregistre un document PDF
      */
     public function saveDocument($document, string $filePath): void
     {
@@ -94,11 +89,10 @@ class PdfHandler implements IPdfHandler
     }
 
     /**
-     *  Ferme un document PDF (libère les ressources) et libère le cache lors de la fermeture
+     * Ferme un document PDF (libère les ressources et le cache)
      */
     public function closeDocument($document): void
     {
-        // Nettoie aussi le cache
         $this->cachedPdf = null;
         $this->cachedPdfPath = null;
         unset($document);
@@ -125,7 +119,6 @@ class StudentPageInfo
  */
 class StudentPdfSplitter
 {
-    // Constantes pour regex/chaînes magiques
     private const STUDENT_NUMBER_REGEX = '/N°\s*Etudiant\s*[:\-]?\s*(\d+)/i';
     private const NAME_LINE_MARKER = 'Page : /';
     private const ATTESTATION_REGEX = '/edition\s*d[\'\']\s*attestations\s*de\s*r[ée]ussite/i';
@@ -141,253 +134,47 @@ class StudentPdfSplitter
     }
 
     /**
-     * Division d'un PDF de relevés de notes en un fichier par étudiant
+     * Divise un PDF de relevés de notes en un fichier par étudiant
      */
     public static function splitByStudent(string $pdfPath, string $outputBaseDir): void
     {
-        self::validateInputPaths($pdfPath, $outputBaseDir);
+        self::validatePaths($pdfPath, $outputBaseDir);
+        self::initPdfHandler();
 
-        $originalFileNameWithoutExt = pathinfo($pdfPath, PATHINFO_FILENAME);
-        $sanitizedBaseName = self::sanitizeForFilename($originalFileNameWithoutExt);
-        $studentOutputDir = $outputBaseDir . DIRECTORY_SEPARATOR . $sanitizedBaseName . '_per_student';
-
-        if (!is_dir($studentOutputDir)) {
-            mkdir($studentOutputDir, 0755, true);
-        }
-
-        if (!isset(self::$pdfHandler)) {
-            self::$pdfHandler = new PdfHandler();
-        }
-
-        $studentDocuments = self::extractStudentDocuments($pdfPath, self::$pdfHandler);
-        self::saveStudentDocuments($studentDocuments, $sanitizedBaseName, $studentOutputDir);
-
-        error_log("Traitement terminé : " . count($studentDocuments) . " fichiers créés dans $studentOutputDir\n");
-    }
-
-    /**
-     * Validation des chemins d'entrée et de sortie
-     */
-    private static function validateInputPaths(string $pdfPath, string $outputBaseDir): void
-    {
-        if (empty($pdfPath)) {
-            throw new InvalidArgumentException('pdfPath ne peut pas être vide');
-        }
-        if (!file_exists($pdfPath)) {
-            throw new Exception("Le fichier PDF source n'a pas été trouvé: $pdfPath");
-        }
-        if (empty($outputBaseDir)) {
-            throw new InvalidArgumentException('outputBaseDir ne peut pas être vide');
-        }
-    }
-
-    /**
-     * Extraction des pages des relevés de notes pour chaque étudiant
-     */
-    private static function extractStudentDocuments(string $pdfPath, IPdfHandler $pdfHandler): array
-    {
-        $results = [];
-        $currentStudentInfo = null;
-        $currentStudentPdf = null;
-
-        // On suppose que la première page est une page de garde et on l'ignore
-        $pageCount = $pdfHandler->getPageCount($pdfPath);
+        $baseName = self::sanitizeForFilename(pathinfo($pdfPath, PATHINFO_FILENAME));
+        $outputDir = $outputBaseDir . DIRECTORY_SEPARATOR . $baseName . '_per_student';
         
-        for ($i = 1; $i < $pageCount; $i++) { // On ignore la première page
-            // Extraction du texte de la page actuelle
-            $pageText = $pdfHandler->getPageText($pdfPath, $i);
-            $extractedInfo = self::parseStudentInfoFromText($pageText);
-
-            // Vérification si on a un nouveau étudiant
-            $isNewStudent = $currentStudentInfo === null ||
-                           ($extractedInfo->studentNumber !== null && $extractedInfo->studentNumber !== $currentStudentInfo->studentNumber) ||
-                           ($extractedInfo->studentNumber === null && $currentStudentInfo->studentNumber !== null);
-
-            if ($isNewStudent) {
-                if ($currentStudentPdf !== null && $currentStudentInfo !== null) {
-                    $results[] = ['pdf' => $currentStudentPdf, 'info' => $currentStudentInfo];
-                }
-
-                $currentStudentInfo = $extractedInfo;
-                $currentStudentPdf = $pdfHandler->createDocument();
-            }
-
-            $pdfHandler->addPageToDocument($currentStudentPdf, $pdfPath, $i);
+        if (!is_dir($outputDir)) {
+            mkdir($outputDir, 0755, true);
         }
 
-        // Ajout du dernier étudiant
-        if ($currentStudentPdf !== null && $currentStudentInfo !== null) {
-            $results[] = ['pdf' => $currentStudentPdf, 'info' => $currentStudentInfo];
-        }
+        $studentDatas = self::extractStudentDatas($pdfPath);
+        self::saveStudentDocuments($studentDatas, $baseName, $outputDir);
 
-        return $results;
+        error_log("Traitement terminé : " . count($studentDatas) . " fichiers créés dans $outputDir\n");
     }
 
     /**
-     * Enregistrement des documents PDF des étudiants
-     */
-    private static function saveStudentDocuments(array $studentDocuments, string $baseName, string $outputDir): void
-    {
-        foreach ($studentDocuments as $doc) {
-            self::saveStudentPdf($doc['pdf'], $doc['info'], $baseName, $outputDir);
-        }
-    }
-
-    /**
-     * Enregistrement du PDF d'un étudiant
-     */
-    private static function saveStudentPdf($studentPdf, StudentPageInfo $studentInfo, string $baseFileName, string $outputDir): void
-    {
-        $safeStudentName = self::sanitizeForFilename($studentInfo->name ?? 'NomNonTrouve');
-        $safeStudentNumber = self::sanitizeForFilename($studentInfo->studentNumber ?? 'NumNonTrouve');
-        $fileName = $baseFileName . '_' . $safeStudentName . '_' . $safeStudentNumber . '.pdf';
-        $fullPath = $outputDir . DIRECTORY_SEPARATOR . $fileName;
-
-        try {
-            self::$pdfHandler->saveDocument($studentPdf, $fullPath);
-            error_log("✓ Fichier sauvegardé: $fileName\n");
-        } catch (Exception $ex) {
-            error_log("Erreur lors de la sauvegarde du fichier $fullPath: " . $ex->getMessage() . "\n");
-        } finally {
-            self::$pdfHandler->closeDocument($studentPdf);
-        }
-    }
-
-    /**
-     * Analyse du texte d'une page pour extraire les informations de l'étudiant
-     */
-    private static function parseStudentInfoFromText(string $pageText): StudentPageInfo
-    {
-        $lines = preg_split('/[\n\r]+/', $pageText, -1, PREG_SPLIT_NO_EMPTY);
-        $studentName = null;
-        $studentNumber = null;
-
-        for ($i=0; $i < count($lines); $i++) {
-            $trimmedLine = trim($lines[$i]);
-
-            if ($studentName === null) {
-                // Recherche du nom de l'étudiant
-                $markerPos = stripos($trimmedLine, self::NAME_LINE_MARKER);
-                if ($markerPos !== false) {
-                    // Le nom est sur la ligne suivante
-                    $studentName = trim($lines[$i+1]);
-                }
-            }
-
-            // Recherche du numéro étudiant
-            if ($studentNumber === null) {
-                if (preg_match(self::STUDENT_NUMBER_REGEX, $trimmedLine, $matches)) {
-                    $studentNumber = $matches[1];
-                }
-            }
-
-            if ($studentName !== null && $studentNumber !== null) {
-                break;
-            }
-        }
-
-        return new StudentPageInfo($studentName, $studentNumber);
-    }
-
-    /**
-     * Nettoie une chaîne selon le contexte
-     */
-    private static function sanitizeString(string $input, string $context = 'filename'): string
-    {
-        $cleaned = '';
-        if (!empty(trim($input))) {
-            $normalized = self::removeAccents($input);
-            if ($context === 'filename') {
-                $cleaned = preg_replace('/[^a-z0-9]/', '_', strtolower($normalized));
-            }
-            else {
-                // Pour 'clean' context
-                $cleaned = preg_replace('/[^\w\-]/', '_', $normalized);
-            }
-            $cleaned = preg_replace('/_+/', '_', trim($cleaned, '_'));
-        }
-        return empty($cleaned) ? 'chaine_vide' : $cleaned;
-    }
-
-    public static function sanitizeForFilename(string $input): string
-    {
-        return self::sanitizeString($input, 'filename');
-    }
-
-    /**
-     * Nettoie une chaîne pour les noms de fichiers
-     */
-    private static function clean(string $s): string
-    {
-        return self::sanitizeString($s, 'clean');
-    }
-
-    /**
-     * Supprime les accents d'une chaîne
-     */
-    private static function removeAccents(string $string): string
-    {
-        $accents = [
-            'à' => 'a', 'á' => 'a', 'â' => 'a', 'ã' => 'a', 'ä' => 'a', 'å' => 'a',
-            'è' => 'e', 'é' => 'e', 'ê' => 'e', 'ë' => 'e',
-            'ì' => 'i', 'í' => 'i', 'î' => 'i', 'ï' => 'i',
-            'ò' => 'o', 'ó' => 'o', 'ô' => 'o', 'õ' => 'o', 'ö' => 'o',
-            'ù' => 'u', 'ú' => 'u', 'û' => 'u', 'ü' => 'u',
-            'ç' => 'c', 'ñ' => 'n'
-        ];
-
-        return strtr(strtolower($string), $accents);
-    }
-
-    /**
-     * Vérifie si une page est une page d'attestation
-     */
-    private static function isAttestationPage(string $pageText): bool
-    {
-        return preg_match(self::ATTESTATION_REGEX, self::normalize($pageText));
-    }
-
-    /**
-     * Normalise une chaîne
-     */
-    private static function normalize(string $s): string
-    {
-        return strtolower(self::removeAccents($s));
-    }
-
-    /**
-     * Parse les métadonnées d'une attestation
-     */
-    private static function parseMeta(string $pageText, string $regex): string
-    {
-        $chaine = 'nan';
-        if (preg_match($regex, $pageText, $matches)) {
-            $chaine = self::clean(trim($matches[1]));
-        }
-        return $chaine;
-    }
-
-    /**
-     * Sépare les attestations dans un document PDF
+     * Divise un PDF d'attestations en un fichier par attestation
      */
     public static function splitAttestations(string $pdfPath, string $outputBaseDir): void
     {
-        // Traitement des attestations
-        $outDir = $outputBaseDir . DIRECTORY_SEPARATOR . pathinfo($pdfPath, PATHINFO_FILENAME) . '_attestations';
+        self::initPdfHandler();
         
+        $outDir = $outputBaseDir . DIRECTORY_SEPARATOR . pathinfo($pdfPath, PATHINFO_FILENAME) . '_attestations';
         if (!is_dir($outDir)) {
             mkdir($outDir, 0755, true);
         }
 
         $pageCount = self::$pdfHandler->getPageCount($pdfPath);
-        
         $saved = 0;
-        for ($i = 1; $i < $pageCount; $i++) { // Skip first page
+        
+        for ($i = 1; $i < $pageCount; $i++) {
             $pageText = self::$pdfHandler->getPageText($pdfPath, $i);
-
-            $formation = self::parseMeta($pageText, self::ATTESTATION_FORMATION_REGEX);
-            $name = self::parseMeta($pageText, self::ATTESTATION_NAME_REGEX);
-            $ine = self::parseMeta($pageText, self::ATTESTATION_NUMETUD_REGEX);
+            
+            $formation = self::parseDatas($pageText, self::ATTESTATION_FORMATION_REGEX);
+            $name = self::parseDatas($pageText, self::ATTESTATION_NAME_REGEX);
+            $ine = self::parseDatas($pageText, self::ATTESTATION_NUMETUD_REGEX);
 
             $fileName = "$formation-$name-$ine.pdf";
             $fullPath = $outDir . DIRECTORY_SEPARATOR . $fileName;
@@ -403,35 +190,179 @@ class StudentPdfSplitter
 
         error_log($saved > 0 
             ? "Terminé : $saved attestation(s) enregistrée(s) dans « $outDir ».\n"
-            : "Aucune page d'attestation détectée.\n");// Implémentation de la séparation par étudiant
+            : "Aucune page d'attestation détectée.\n");
     }
 
     /**
-     * Détecte automatiquement le type de document et effectue la séparation adaptée
+     * Divise un PDF en plusieurs fichiers selon le type de document
      */
     public static function autoSplit(string $pdfPath, string $outputBaseDir): void
     {
-        if (empty($pdfPath)) {
-            throw new InvalidArgumentException('pdfPath ne peut pas être vide');
-        }
-        if (!file_exists($pdfPath)) {
-            throw new Exception("Le fichier PDF source n'a pas été trouvé: $pdfPath");
-        }
+        self::validatePaths($pdfPath, $outputBaseDir);
+        self::initPdfHandler();
 
-        if (!isset(self::$pdfHandler)) {
-            self::$pdfHandler = new PdfHandler();
-        }
-
-        // On lit le texte de la première page pour détecter le type de document
         $firstPageText = self::$pdfHandler->getPageText($pdfPath, 0);
 
         if (preg_match(self::ATTESTATION_REGEX, self::normalize($firstPageText))) {
-            // Il s'agit d'un document d'attestations
             self::splitAttestations($pdfPath, $outputBaseDir);
         } else {
-            // Il s'agit d'un relevé de notes
             self::splitByStudent($pdfPath, $outputBaseDir);
         }
     }
-}
 
+    /**
+     * Valide les chemins d'accès au PDF et au répertoire de sortie
+     */
+    private static function validatePaths(string $pdfPath, string $outputBaseDir): void
+    {
+        if (empty($pdfPath) || !file_exists($pdfPath)) {
+            throw new Exception("Le fichier PDF source n'existe pas: $pdfPath");
+        }
+        if (empty($outputBaseDir)) {
+            throw new InvalidArgumentException('outputBaseDir ne peut pas être vide');
+        }
+    }
+
+    /**
+     * Initialise le gestionnaire de PDF
+     */
+    private static function initPdfHandler(): void
+    {
+        if (!isset(self::$pdfHandler)) {
+            self::$pdfHandler = new PdfHandler();
+        }
+    }
+
+    /**
+     * Extraction des datas étudiants d'un PDF
+     */
+    private static function extractStudentDatas(string $pdfPath): array
+    {
+        $results = [];
+        $currentStudentInfo = null;
+        $currentStudentPdf = null;
+        $pageCount = self::$pdfHandler->getPageCount($pdfPath);
+        
+        for ($i = 1; $i < $pageCount; $i++) {
+            $pageText = self::$pdfHandler->getPageText($pdfPath, $i);
+            $extractedInfo = self::parseStudentInfoFromText($pageText);
+
+            $isNewStudent = $currentStudentInfo === null ||
+                           ($extractedInfo->studentNumber !== null && $extractedInfo->studentNumber !== $currentStudentInfo->studentNumber) ||
+                           ($extractedInfo->studentNumber === null && $currentStudentInfo->studentNumber !== null);
+
+            if ($isNewStudent) {
+                if ($currentStudentPdf !== null && $currentStudentInfo !== null) {
+                    $results[] = ['pdf' => $currentStudentPdf, 'info' => $currentStudentInfo];
+                }
+                $currentStudentInfo = $extractedInfo;
+                $currentStudentPdf = self::$pdfHandler->createDocument();
+            }
+
+            self::$pdfHandler->addPageToDocument($currentStudentPdf, $pdfPath, $i);
+        }
+
+        if ($currentStudentPdf !== null && $currentStudentInfo !== null) {
+            $results[] = ['pdf' => $currentStudentPdf, 'info' => $currentStudentInfo];
+        }
+
+        return $results;
+    }
+
+    /**
+     * Sauvegarde les documents PDF des étudiants
+     */
+    private static function saveStudentDocuments(array $studentDocuments, string $baseName, string $outputDir): void
+    {
+        foreach ($studentDocuments as $doc) {
+            $safeStudentName = self::sanitizeForFilename($doc['info']->name ?? 'NomNonTrouve');
+            $safeStudentNumber = self::sanitizeForFilename($doc['info']->studentNumber ?? 'NumNonTrouve');
+            $fileName = $baseName . '_' . $safeStudentName . '_' . $safeStudentNumber . '.pdf';
+            $fullPath = $outputDir . DIRECTORY_SEPARATOR . $fileName;
+
+            try {
+                self::$pdfHandler->saveDocument($doc['pdf'], $fullPath);
+                error_log("✓ Fichier sauvegardé: $fileName\n");
+            } catch (Exception $ex) {
+                error_log("Erreur lors de la sauvegarde du fichier $fullPath: " . $ex->getMessage() . "\n");
+            } finally {
+                self::$pdfHandler->closeDocument($doc['pdf']);
+            }
+        }
+    }
+
+    /**
+     * Extraction des informations d'un étudiant à partir du texte d'une page
+     */
+    private static function parseStudentInfoFromText(string $pageText): StudentPageInfo
+    {
+        $lines = preg_split('/[\n\r]+/', $pageText, -1, PREG_SPLIT_NO_EMPTY);
+        $studentName = null;
+        $studentNumber = null;
+
+        for ($i = 0; $i < count($lines); $i++) {
+            $trimmedLine = trim($lines[$i]);
+
+            if ($studentName === null && stripos($trimmedLine, self::NAME_LINE_MARKER) !== false) {
+                $studentName = trim($lines[$i + 1] ?? '');
+            }
+
+            if ($studentNumber === null && preg_match(self::STUDENT_NUMBER_REGEX, $trimmedLine, $matches)) {
+                $studentNumber = $matches[1];
+            }
+
+            if ($studentName !== null && $studentNumber !== null) {
+                break;
+            }
+        }
+
+        return new StudentPageInfo($studentName, $studentNumber);
+    }
+
+    /**
+     * Nettoie une chaîne pour l'utiliser comme nom de fichier
+     */
+    public static function sanitizeForFilename(string $input): string
+    {
+        if (empty(trim($input))) return 'chaine_vide';
+        
+        $normalized = self::removeAccents($input);
+        $cleaned = preg_replace('/[^a-z0-9]/', '_', strtolower($normalized));
+        return preg_replace('/_+/', '_', trim($cleaned, '_'));
+    }
+
+    /**
+     * Supprime les accents d'une chaîne
+     */
+    private static function removeAccents(string $string): string
+    {
+        $accents = [
+            'à' => 'a', 'á' => 'a', 'â' => 'a', 'ã' => 'a', 'ä' => 'a', 'å' => 'a',
+            'è' => 'e', 'é' => 'e', 'ê' => 'e', 'ë' => 'e',
+            'ì' => 'i', 'í' => 'i', 'î' => 'i', 'ï' => 'i',
+            'ò' => 'o', 'ó' => 'o', 'ô' => 'o', 'õ' => 'o', 
+            'ö' => 'o', 'ù' => 'u', 'ú' => 'u', 'û' => 'u', 
+            'ü' => 'u', 'ç' => 'c', 'ñ' => 'n'
+        ];
+        return strtr(strtolower($string), $accents);
+    }
+
+    /**
+     * Normalise une chaîne en minuscules et sans accents
+     */
+    private static function normalize(string $s): string
+    {
+        return strtolower(self::removeAccents($s));
+    }
+
+    /**
+     * Analyse le texte d'une page pour en extraire des données
+     */
+    private static function parseDatas(string $pageText, string $regex): string
+    {
+        if (preg_match($regex, $pageText, $matches)) {
+            return self::sanitizeForFilename(trim($matches[1]));
+        }
+        return 'nan';
+    }
+}
