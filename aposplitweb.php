@@ -1,6 +1,6 @@
 <?php
 // BM 2025
-// v1.0 20250901
+// v1.1 20250902
 
 require_once('vendor/autoload.php');
 
@@ -22,7 +22,6 @@ interface IPdfHandler
  */
 class PdfHandler implements IPdfHandler
 {
-    // Système de cache pour éviter de parser plusieurs fois le même PDF
     private ?\Smalot\PdfParser\Document $cachedPdf = null;
     private ?string $cachedPdfPath = null;
 
@@ -263,7 +262,6 @@ class StudentPdfSplitter
         $studentName = null;
         $studentNumber = null;
 
-        //foreach ($lines as $line) {
         for ($i=0; $i < count($lines); $i++) {
             $trimmedLine = trim($lines[$i]);
 
@@ -302,7 +300,8 @@ class StudentPdfSplitter
             if ($context === 'filename') {
                 $cleaned = preg_replace('/[^a-z0-9]/', '_', strtolower($normalized));
             }
-            else {// Pour 'clean' context
+            else {
+                // Pour 'clean' context
                 $cleaned = preg_replace('/[^\w\-]/', '_', $normalized);
             }
             $cleaned = preg_replace('/_+/', '_', trim($cleaned, '_'));
@@ -359,39 +358,52 @@ class StudentPdfSplitter
     /**
      * Parse les métadonnées d'une attestation
      */
-    private static function parseMeta(string $pageText): array
+    private static function parseMeta(string $pageText, string $regex): string
     {
-        $name = '';
-        $formation = '';
-        $ine = '';
+        $chaine = 'nan';
+        if (preg_match($regex, $pageText, $matches)) {
+            $chaine = self::clean(trim($matches[1]));
+        }
+        return $chaine;
+    }
 
-        // Recherche du nom
-        if (preg_match(self::ATTESTATION_NAME_REGEX, $pageText, $matches)) {
-            $name = self::clean(trim($matches[1]));
+    /**
+     * Sépare les attestations dans un document PDF
+     */
+    public static function splitAttestations(string $pdfPath, string $outputBaseDir): void
+    {
+        // Traitement des attestations
+        $outDir = $outputBaseDir . DIRECTORY_SEPARATOR . pathinfo($pdfPath, PATHINFO_FILENAME) . '_attestations';
+        
+        if (!is_dir($outDir)) {
+            mkdir($outDir, 0755, true);
         }
 
-        // Recherche de la formation
-        if (preg_match(self::ATTESTATION_FORMATION_REGEX, $pageText, $matches)) {
-            $formation = self::clean(trim($matches[1]));
+        $pageCount = self::$pdfHandler->getPageCount($pdfPath);
+        
+        $saved = 0;
+        for ($i = 1; $i < $pageCount; $i++) { // Skip first page
+            $pageText = self::$pdfHandler->getPageText($pdfPath, $i);
+
+            $formation = self::parseMeta($pageText, self::ATTESTATION_FORMATION_REGEX);
+            $name = self::parseMeta($pageText, self::ATTESTATION_NAME_REGEX);
+            $ine = self::parseMeta($pageText, self::ATTESTATION_NUMETUD_REGEX);
+
+            $fileName = "$formation-$name-$ine.pdf";
+            $fullPath = $outDir . DIRECTORY_SEPARATOR . $fileName;
+
+            $singleDoc = self::$pdfHandler->createDocument();
+            self::$pdfHandler->addPageToDocument($singleDoc, $pdfPath, $i);
+            self::$pdfHandler->saveDocument($singleDoc, $fullPath);
+            self::$pdfHandler->closeDocument($singleDoc);
+
+            error_log("✓ Page " . ($i + 1) . " → $fileName\n");
+            $saved++;
         }
 
-        // Recherche du numéro étudiant
-        if (preg_match(self::ATTESTATION_NUMETUD_REGEX, $pageText, $matches)) {
-            $ine = self::clean($matches[1]);
-        }
-
-        // Valeurs par défaut
-        if (empty($name)) $name = 'nan';
-        if (empty($formation)) $formation = 'nan';
-        if (empty($ine)) $ine = 'nan';
-
-        error_log("Résultat final: $name, $formation, $ine\n");
-
-        return [
-            self::normalize($formation),
-            self::normalize($name),
-            self::normalize($ine)
-        ];
+        error_log($saved > 0 
+            ? "Terminé : $saved attestation(s) enregistrée(s) dans « $outDir ».\n"
+            : "Aucune page d'attestation détectée.\n");// Implémentation de la séparation par étudiant
     }
 
     /**
@@ -414,41 +426,8 @@ class StudentPdfSplitter
         $firstPageText = self::$pdfHandler->getPageText($pdfPath, 0);
 
         if (preg_match(self::ATTESTATION_REGEX, self::normalize($firstPageText))) {
-            // Traitement des attestations
-            $outDir = $outputBaseDir . DIRECTORY_SEPARATOR . pathinfo($pdfPath, PATHINFO_FILENAME) . '_attestations';
-            
-            if (!is_dir($outDir)) {
-                mkdir($outDir, 0755, true);
-            }
-
-            $pageCount = self::$pdfHandler->getPageCount($pdfPath);
-            
-            // Vérifie que la première page est bien une édition d'attestations
-            if (!self::isAttestationPage($firstPageText)) {
-                error_log("❓ Le document ne semble pas être « Édition d'attestations de réussite ».\n");
-                return;
-            }
-
-            $saved = 0;
-            for ($i = 1; $i < $pageCount; $i++) { // Skip first page
-                $pageText = self::$pdfHandler->getPageText($pdfPath, $i);
-                
-                list($formation, $name, $ine) = self::parseMeta($pageText);
-                $fileName = "$formation-$name-$ine.pdf";
-                $fullPath = $outDir . DIRECTORY_SEPARATOR . $fileName;
-
-                $singleDoc = self::$pdfHandler->createDocument();
-                self::$pdfHandler->addPageToDocument($singleDoc, $pdfPath, $i);
-                self::$pdfHandler->saveDocument($singleDoc, $fullPath);
-                self::$pdfHandler->closeDocument($singleDoc);
-
-                error_log("✓ Page " . ($i + 1) . " → $fileName\n");
-                $saved++;
-            }
-
-            error_log($saved > 0 
-                ? "Terminé : $saved attestation(s) enregistrée(s) dans « $outDir ».\n"
-                : "Aucune page d'attestation détectée.\n");
+            // Il s'agit d'un document d'attestations
+            self::splitAttestations($pdfPath, $outputBaseDir);
         } else {
             // Il s'agit d'un relevé de notes
             self::splitByStudent($pdfPath, $outputBaseDir);
