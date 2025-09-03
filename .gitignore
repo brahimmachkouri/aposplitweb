@@ -1,0 +1,78 @@
+# ################## #
+# Fichiers Composer  #
+# ################## #
+# Le répertoire vendor contient les dépendances. Il ne doit JAMAIS être commité.
+# Il est recréé à l'identique grâce à `composer install` et au fichier composer.lock.
+/vendor/
+
+# Phars de Composer téléchargés localement
+composer.phar
+composer.phar.sha256
+
+# ####################### #
+# Fichiers de secrets     #
+# et de configuration     #
+# ####################### #
+# Fichiers d'environnement contenant des secrets (clés d'API, mots de passe BDD).
+# Commitez plutôt un fichier .env.example ou .env.dist pour servir de modèle.
+.env
+.env.*
+!.env.example
+!.env.dist
+
+# ####################### #
+# Fichiers de log & cache #
+# ####################### #
+# Les logs sont générés par l'application et ne doivent pas être versionnés.
+/logs/
+*.log
+
+# Les fichiers de cache sont spécifiques à un environnement et générés à la volée.
+/cache/
+/var/cache/
+/storage/framework/
+
+# ######################## #
+# Fichiers d'IDE & Editeur #
+# ######################## #
+# Fichiers spécifiques à des éditeurs de code ou IDE
+.idea/
+.vscode/
+*.swp
+*~
+*.sublime-*
+
+# ######################## #
+# Fichiers système (OS)  #
+# ######################## #
+# Fichiers générés par macOS, Windows et Linux
+.DS_Store
+Thumbs.db
+desktop.ini
+._*
+.Spotlight-V100
+.Trashes
+
+# ######################## #
+# Fichiers de build &      #
+# d'artefacts              #
+# ######################## #
+# Répertoires de build pour les assets front-end (JavaScript, CSS)
+/public/build/
+/dist/
+/node_modules/
+npm-debug.log
+yarn-error.log
+
+# ################# #
+# Fichiers divers   #
+# ################# #
+# Artefacts de tests (rapports de couverture de code, cache)
+/coverage/
+.phpunit.result.cache
+
+# Répertoire pour les fichiers uploadés par les utilisateurs
+/public/uploads/
+
+# Fichier de log du serveur de développement PHP intégré
+/.php_built_in_server.log
