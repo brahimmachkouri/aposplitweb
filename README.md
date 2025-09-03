@@ -2,10 +2,13 @@
 ![Composer](https://img.shields.io/badge/Composer-2.x-885630?logo=composer&logoColor=white)
 [![Licence MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
-# aposplitweb
-ApoSplit Web : découpage d'attestations de réussite ou de relevés de notes d'Apogée en attestatinos ou relevés de notes en documents individuels (par étudiant) - version web
+# Aposplit Web
+ApoSplit Web : découpage d'attestations de réussite ou de relevés de notes d'Apogée en documents individuels (par étudiant). C'est un outil à intégrer dans votre propre application PHP.
 
-Version desktop pour Windows : [aposplit](https://github.com/brahimmachkouri/aposplit)
+Aperçu de l'interface de test :
+![index.png](./images/index.png)
+
+La version desktop pour Windows se trouve ici : [aposplit](https://github.com/brahimmachkouri/aposplit)
 
 # Cas d'Usage pour les Administratifs/Enseignants
 
@@ -13,5 +16,3 @@ Version desktop pour Windows : [aposplit](https://github.com/brahimmachkouri/apo
 - Envoi personnalisé : Permet d'envoyer des relevés individuels aux étudiants par email.
 - Archivage : Organisation automatique des documents par étudiant.
 
-
-![index.png](./images/index.png)
