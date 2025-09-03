@@ -5,6 +5,9 @@
 # Il est recréé à l'identique grâce à `composer install` et au fichier composer.lock.
 /vendor/
 
+/input/
+/output/
+
 # Phars de Composer téléchargés localement
 composer.phar
 composer.phar.sha256
